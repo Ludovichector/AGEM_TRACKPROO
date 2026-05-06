@@ -1,0 +1,914 @@
+// =====================================================
+// AGEM TrackPro - Prisma Schema
+// Chantier OBF Siège Social - 20 Mds FCFA / 67 mois
+// =====================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =====================================================
+// ENUMS
+// =====================================================
+
+enum Role {
+  SUPER_ADMIN
+  MOA_DG
+  MOA_COPIL
+  AMOA_CHEF
+  AMOA_INGENIEUR
+  AMOA_JURISTE
+  AMOA_ECONOMISTE
+  AMOA_RSE
+  MOE
+  BCT
+  ENTREPRISE
+  OBSERVATEUR
+}
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+}
+
+enum LegalActionStatus {
+  TO_START
+  IN_PROGRESS
+  ON_HOLD
+  COMPLETED
+  BLOCKED
+  LEGAL_MILESTONE_PENDING
+}
+
+enum EligibilityStatus {
+  YES
+  NO
+  TO_VERIFY
+}
+
+enum RiskStatus {
+  UNDER_CONTROL
+  MONITORING
+  ESCALATED
+  CLOSED
+}
+
+enum MilestoneCriticality {
+  LEGAL_ABSOLUTE
+  LEGAL
+  CRITICAL
+  KEY
+  MONITORING
+}
+
+enum MilestoneStatus {
+  PENDING
+  IN_PROGRESS
+  ACHIEVED
+  MISSED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_DUE_SOON
+  TASK_OVERDUE
+  MENTION
+  COMMENT
+  EVM_ALERT
+  LEGAL_DEADLINE_ALERT
+  MILESTONE_DUE
+  RISK_ESCALATED
+  DOCUMENT_UPLOADED
+  SYSTEM
+}
+
+enum CertificationStatus {
+  NOT_STARTED
+  IN_SELECTION
+  AUDITED
+  CERTIFIED
+  REJECTED
+}
+
+enum ExpenseCategory {
+  // Dépenses
+  MATERIEL
+  SERVICES
+  MAIN_D_OEUVRE
+  FRAIS_GENERAUX
+  AUTRE_DEPENSE
+  AUTRE
+  // Recettes
+  AVANCE_MARCHE
+  ACOMPTE_CLIENT
+  SUBVENTION
+  VIREMENT_FINANCEMENT
+  AUTRE_RECETTE
+}
+
+enum ExpenseStatus {
+  EN_ATTENTE
+  APPROUVE
+  REJETE
+}
+
+enum TransactionType {
+  DEPENSE
+  RECETTE
+}
+
+// =====================================================
+// USERS
+// =====================================================
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String?
+  fullName     String
+  phone        String?
+  role         Role
+  organization String
+  jobTitle     String?
+  avatarUrl    String?
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tasksAssigned   Task[]            @relation("TaskAssignee")
+  tasksCreated    Task[]            @relation("TaskCreator")
+  comments        Comment[]
+  messages        Message[]
+  notifications   Notification[]
+  evmEntries      EvmMonthlyEntry[]
+  riskUpdates     RiskUpdate[]
+  documentUploads Document[]
+  activityLogs    ActivityLog[]
+  taskWatchers    TaskWatcher[]
+  rseEntries      RseIndicator[]
+  channelMembers   ChannelMember[]
+  channelReadStates ChannelReadState[]
+  pinnedMessages   PinnedMessage[]
+  presence         UserPresence?
+  reactions        Reaction[]
+  expensesRecorded Expense[]        @relation("ExpenseRecorder")
+  expensesApproved Expense[]        @relation("ExpenseApprover")
+  photosTaken      SitePhoto[]
+  photoAnnotations PhotoAnnotation[]
+  validationsSubmitted ClientValidation[] @relation("ValidationSubmitter")
+  validationsReviewed  ClientValidation[] @relation("ValidationReviewer")
+  validationsAssigned  ClientValidation[] @relation("AssignedReviewers")
+  reservesResolved     ClientReserve[]    @relation("ReserveResolver")
+  reportsCreated       Report[]           @relation("ReportCreator")
+
+  @@index([role])
+  @@index([email])
+}
+
+// =====================================================
+// PROJECT
+// =====================================================
+
+model Project {
+  id             String        @id @default(cuid())
+  code           String        @unique
+  name           String
+  client         String
+  totalBudgetXOF BigInt
+  startDate      DateTime
+  durationMonths Int
+  status         ProjectStatus @default(ACTIVE)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  phases           Phase[]
+  legalTracker     LegalTracker?
+  legalActions     LegalAction[]
+  fiscalAdvantages FiscalAdvantage[]
+  risks            Risk[]
+  boards           Board[]
+  rseIndicators    RseIndicator[]
+  certifications   Certification[]
+  raciItems        RaciItem[]
+  channels         Channel[]
+  folders          Folder[]
+  expenses         Expense[]
+  healthScores     ProjectHealthScore[]
+  sitePhotos       SitePhoto[]
+  clientValidations ClientValidation[]
+  reports          Report[]
+}
+
+// =====================================================
+// EVM
+// =====================================================
+
+model EvmMonthlyEntry {
+  id               String    @id @default(cuid())
+  projectId        String
+  monthNumber      Int
+  monthDate        DateTime
+  pvCumulXOF       BigInt
+  evCumulXOF       BigInt
+  acCumulXOF       BigInt
+  physicalProgress Float
+  bacXOF           BigInt
+  notes            String?
+  enteredById      String
+  enteredBy        User      @relation(fields: [enteredById], references: [id])
+  validatedAt      DateTime?
+  validatedById    String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([projectId, monthNumber])
+  @@index([projectId, monthDate])
+}
+
+// =====================================================
+// COMPTABILITÉ / DÉPENSES
+// =====================================================
+
+model Expense {
+  id              String          @id @default(cuid())
+  projectId       String
+  project         Project         @relation(fields: [projectId], references: [id])
+  title           String
+  description     String?         @db.Text
+  amountXOF       BigInt
+  date            DateTime
+  category        ExpenseCategory
+  status          ExpenseStatus   @default(EN_ATTENTE)
+  invoiceRef      String?
+  receiptUrl      String?
+  recordedById    String
+  recordedBy      User            @relation("ExpenseRecorder", fields: [recordedById], references: [id])
+  approvedById    String?
+  approvedBy      User?           @relation("ExpenseApprover", fields: [approvedById], references: [id])
+  approvedAt      DateTime?
+  rejectionReason String?         @db.Text
+  transactionType TransactionType @default(DEPENSE)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([projectId, status])
+  @@index([projectId, date])
+  @@index([category])
+}
+
+// =====================================================
+// LOI 022-2025
+// =====================================================
+
+model LegalTracker {
+  id                       String    @id @default(cuid())
+  projectId                String    @unique
+  project                  Project   @relation(fields: [projectId], references: [id])
+  filingDeadline           DateTime
+  dossierCompletenessPct   Float     @default(0)
+  authorizationsObtained   Int       @default(0)
+  authorizationsRequired   Int       @default(6)
+  fiscalDossiersDeposited  Int       @default(0)
+  fiscalDossiersTotal      Int       @default(5)
+  counter36MonthsStarted   Boolean   @default(false)
+  counter36MonthsStartDate DateTime?
+  monthsSinceApproval      Int       @default(0)
+  updatedAt                DateTime  @updatedAt
+}
+
+model LegalAction {
+  id          String            @id @default(cuid())
+  projectId   String
+  project     Project           @relation(fields: [projectId], references: [id])
+  title       String
+  phase       String
+  deadline    String
+  responsible String
+  status      LegalActionStatus
+  notes       String?
+  position    Int               @default(0)
+  updatedAt   DateTime          @updatedAt
+
+  @@index([projectId, status])
+  @@index([projectId, phase])
+}
+
+model FiscalAdvantage {
+  id                  String            @id @default(cuid())
+  projectId           String
+  project             Project           @relation(fields: [projectId], references: [id])
+  category            String
+  eligible            EligibilityStatus
+  dossierStatus       String
+  agrementStatus      String
+  estimatedSavingsXOF BigInt            @default(0)
+  position            Int               @default(0)
+  updatedAt           DateTime          @updatedAt
+
+  @@index([projectId])
+}
+
+// =====================================================
+// RISQUES
+// =====================================================
+
+model Risk {
+  id          String     @id @default(cuid())
+  projectId   String
+  project     Project    @relation(fields: [projectId], references: [id])
+  title       String
+  probability Int
+  impact      Int
+  score       Int
+  mitigation  String     @db.Text
+  status      RiskStatus
+  ownerId     String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  updates RiskUpdate[]
+
+  @@index([projectId, status])
+  @@index([projectId, score])
+}
+
+model RiskUpdate {
+  id        String      @id @default(cuid())
+  riskId    String
+  risk      Risk        @relation(fields: [riskId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User        @relation(fields: [authorId], references: [id])
+  comment   String      @db.Text
+  newStatus RiskStatus?
+  createdAt DateTime    @default(now())
+
+  @@index([riskId, createdAt])
+}
+
+// =====================================================
+// PHASES & PLANNING
+// =====================================================
+
+model Phase {
+  id             String      @id @default(cuid())
+  projectId      String
+  project        Project     @relation(fields: [projectId], references: [id])
+  number         Int
+  name           String
+  startMonth     Int
+  endMonth       Int
+  durationMonths Int
+  description    String?
+  progressPct    Float       @default(0)
+
+  milestones Milestone[]
+  photos     SitePhoto[]
+
+  @@unique([projectId, number])
+  @@index([projectId])
+}
+
+model Milestone {
+  id                 String               @id @default(cuid())
+  phaseId            String
+  phase              Phase                @relation(fields: [phaseId], references: [id])
+  monthNumber        Int
+  title              String
+  criticality        MilestoneCriticality
+  validationCriteria String               @db.Text
+  status             MilestoneStatus      @default(PENDING)
+  achievedAt         DateTime?
+
+  @@index([phaseId])
+  @@index([monthNumber])
+}
+
+// =====================================================
+// KANBAN / TÂCHES
+// =====================================================
+
+model Board {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+  name        String
+  description String?
+  isArchived  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  columns Column[]
+
+  @@index([projectId])
+}
+
+model Column {
+  id       String @id @default(cuid())
+  boardId  String
+  board    Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  name     String
+  position Int
+  color    String?
+
+  tasks Task[]
+
+  @@index([boardId, position])
+}
+
+model Task {
+  id             String       @id @default(cuid())
+  columnId       String
+  column         Column       @relation(fields: [columnId], references: [id])
+  title          String
+  description    String?      @db.Text
+  position       Int
+  priority       TaskPriority @default(MEDIUM)
+  dueDate        DateTime?
+  startDate      DateTime?
+  estimatedHours Float?
+  loggedHours    Float        @default(0)
+  progressPct    Int          @default(0)
+  labels         String[]
+  linkedPhaseId  String?
+  linkedRiskId   String?
+  createdById    String
+  createdBy      User         @relation("TaskCreator", fields: [createdById], references: [id])
+  assigneeId     String?
+  assignee       User?        @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  completedAt    DateTime?
+
+  watchers    TaskWatcher[]
+  comments    Comment[]
+  attachments Attachment[]
+  checklist   ChecklistItem[]
+
+  @@index([columnId, position])
+  @@index([assigneeId])
+  @@index([dueDate])
+  @@index([createdById])
+}
+
+model TaskWatcher {
+  taskId String
+  userId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@id([taskId, userId])
+}
+
+model ChecklistItem {
+  id       String  @id @default(cuid())
+  taskId   String
+  task     Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  text     String
+  isDone   Boolean @default(false)
+  position Int
+
+  @@index([taskId, position])
+}
+
+model Comment {
+  id        String    @id @default(cuid())
+  taskId    String?
+  content   String    @db.Text
+  authorId  String
+  author    User      @relation(fields: [authorId], references: [id])
+  mentions  String[]
+  task      Task?     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  editedAt  DateTime?
+
+  @@index([taskId, createdAt])
+  @@index([authorId])
+}
+
+model Attachment {
+  id           String   @id @default(cuid())
+  taskId       String?
+  messageId    String?
+  task         Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  message      Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  fileName     String
+  fileUrl      String
+  fileType     String
+  fileSize     Int
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  @@index([taskId])
+  @@index([messageId])
+}
+
+// =====================================================
+// RSE & CSRD
+// =====================================================
+
+model RseIndicator {
+  id                      String   @id @default(cuid())
+  projectId               String
+  project                 Project  @relation(fields: [projectId], references: [id])
+  monthNumber             Int
+  carbonTotalTCO2eq       Float?
+  carbonMonthlyTCO2eq     Float?
+  reductionVsBenchmarkPct Float?
+  localMaterialsPct       Float?
+  localWorkforcePct       Float?
+  wasteValorizationPct    Float?
+  notes                   String?
+  enteredById             String
+  enteredBy               User     @relation(fields: [enteredById], references: [id])
+  createdAt               DateTime @default(now())
+
+  @@unique([projectId, monthNumber])
+  @@index([projectId, monthNumber])
+}
+
+model Certification {
+  id             String              @id @default(cuid())
+  projectId      String
+  project        Project             @relation(fields: [projectId], references: [id])
+  name           String
+  targetLevel    String
+  selectionPhase String
+  auditor        String?
+  status         CertificationStatus
+  progressPct    Int                 @default(0)
+
+  @@index([projectId])
+}
+
+// =====================================================
+// RACI
+// =====================================================
+
+model RaciItem {
+  id             String  @id @default(cuid())
+  projectId      String
+  project        Project @relation(fields: [projectId], references: [id])
+  activity       String
+  moa            String
+  amoa           String
+  moe            String
+  bctEntreprises String
+  position       Int
+
+  @@index([projectId, position])
+}
+
+// =====================================================
+// COMMUNICATION (CHAT)
+// =====================================================
+
+model Channel {
+  id           String   @id @default(cuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id])
+  name         String
+  description  String?
+  isPrivate    Boolean  @default(false)
+  isDM         Boolean  @default(false)
+  allowedRoles Role[]
+  createdAt    DateTime @default(now())
+
+  members      ChannelMember[]
+  messages     Message[]
+  pinnedMsgs   PinnedMessage[]
+  readStates   ChannelReadState[]
+
+  @@unique([projectId, name])
+  @@index([projectId])
+  @@index([isDM])
+}
+
+model ChannelMember {
+  channelId    String
+  userId       String
+  channel      Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id])
+  joinedAt     DateTime @default(now())
+  isMuted      Boolean  @default(false)
+  notifyLevel  String   @default("all") // all | mentions | none
+
+  @@id([channelId, userId])
+}
+
+model ChannelReadState {
+  channelId   String
+  userId      String
+  lastReadAt  DateTime @default(now())
+  channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@id([channelId, userId])
+  @@index([userId])
+}
+
+model Message {
+  id              String    @id @default(cuid())
+  channelId       String
+  channel         Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  authorId        String
+  author          User      @relation(fields: [authorId], references: [id])
+  content         String    @db.Text
+  mentions        String[]
+  parentMessageId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  editedAt        DateTime?
+  deletedAt       DateTime?
+
+  parentMessage Message?      @relation("MessageReplies", fields: [parentMessageId], references: [id], onDelete: Cascade)
+  replies       Message[]     @relation("MessageReplies")
+
+  attachments  Attachment[]
+  reactions    Reaction[]
+  pinnedAs     PinnedMessage?
+
+  @@index([channelId, createdAt])
+  @@index([authorId])
+}
+
+model Reaction {
+  id        String  @id @default(cuid())
+  messageId String
+  userId    String
+  emoji     String
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+}
+
+model PinnedMessage {
+  id         String   @id @default(cuid())
+  channelId  String
+  messageId  String   @unique
+  pinnedById String
+  pinnedAt   DateTime @default(now())
+
+  channel   Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  pinnedBy  User    @relation(fields: [pinnedById], references: [id])
+
+  @@index([channelId])
+}
+
+model UserPresence {
+  userId     String   @id
+  status     String   @default("online")
+  customText String?
+  lastSeenAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// =====================================================
+// GED - DOCUMENTS
+// =====================================================
+
+model Folder {
+  id           String   @id @default(cuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id])
+  name         String
+  parentId     String?
+  parent       Folder?  @relation("FolderTree", fields: [parentId], references: [id])
+  children     Folder[] @relation("FolderTree")
+  allowedRoles Role[]
+  position     Int      @default(0)
+
+  documents Document[]
+
+  @@index([projectId, parentId])
+}
+
+model Document {
+  id           String   @id @default(cuid())
+  folderId     String
+  folder       Folder   @relation(fields: [folderId], references: [id])
+  name         String
+  fileUrl      String
+  fileType     String
+  fileSize     Int
+  version      Int      @default(1)
+  uploadedById String
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+  description  String?
+  tags         String[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  reports      Report[]
+
+  @@index([folderId])
+  @@index([uploadedById])
+}
+
+// =====================================================
+// NOTIFICATIONS
+// =====================================================
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id])
+  type      NotificationType
+  title     String
+  body      String
+  link      String?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+}
+
+// =====================================================
+// AUDIT LOG
+// =====================================================
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  action     String
+  entityType String?
+  entityId   String?
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+// =====================================================
+// SETTINGS
+// =====================================================
+
+model AppSetting {
+  key   String @id
+  value Json
+}
+
+// =====================================================
+// CLIENT FEATURES (VAGUE 1)
+// =====================================================
+
+model ProjectHealthScore {
+  id              String   @id @default(cuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id])
+  date            DateTime
+  overallScore    Int      // 0-100
+  scheduleScore   Int      // 0-100
+  budgetScore     Int      // 0-100
+  qualityScore    Int      // 0-100
+  safetyScore     Int      // 0-100
+  weatherEmoji    String   // ☀️ ⛅ 🌧️ ⛈️
+  commentary      String?  @db.Text
+  computedAt      DateTime @default(now())
+  
+  @@index([projectId, date])
+}
+
+model SitePhoto {
+  id            String   @id @default(cuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id])
+  zone          String          // "Fondations", "RDC", "Étage 1", etc.
+  caption       String?
+  fileUrl       String
+  thumbnailUrl  String?
+  latitude      Float?
+  longitude     Float?
+  takenAt       DateTime
+  takenById     String
+  takenBy       User     @relation(fields: [takenById], references: [id])
+  phaseId       String?
+  phase         Phase?   @relation(fields: [phaseId], references: [id])
+  tags          String[]
+  createdAt     DateTime @default(now())
+  
+  annotations   PhotoAnnotation[]
+  
+  @@index([projectId, zone])
+  @@index([projectId, takenAt])
+}
+
+model PhotoAnnotation {
+  id          String   @id @default(cuid())
+  photoId     String
+  photo       SitePhoto @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User      @relation(fields: [authorId], references: [id])
+  content     String   @db.Text
+  posX        Float    // Position X sur la photo (%)
+  posY        Float    // Position Y sur la photo (%)
+  createdAt   DateTime @default(now())
+}
+
+// =====================================================
+// CLIENT FEATURES (VAGUE 2)
+// =====================================================
+
+model ClientValidation {
+  id             String             @id @default(cuid())
+  projectId      String
+  project        Project            @relation(fields: [projectId], references: [id])
+  milestoneId    String?
+  title          String
+  description    String?            @db.Text
+  documentUrl    String?
+  status         ValidationStatus   @default(PENDING)
+  submittedAt    DateTime           @default(now())
+  submittedById  String
+  submittedBy    User               @relation("ValidationSubmitter", fields: [submittedById], references: [id])
+  reviewedAt     DateTime?
+  reviewedById   String?
+  reviewedBy     User?              @relation("ValidationReviewer", fields: [reviewedById], references: [id])
+  signatureUrl   String?
+  comment        String?            @db.Text
+  
+  assignedReviewers User[]          @relation("AssignedReviewers")
+  reserves       ClientReserve[]
+  
+  @@index([projectId, status])
+}
+
+model ClientReserve {
+  id             String           @id @default(cuid())
+  validationId   String
+  validation     ClientValidation @relation(fields: [validationId], references: [id], onDelete: Cascade)
+  category       String           // "Qualité", "Sécurité", "Conformité", etc.
+  description    String           @db.Text
+  photoUrl       String?
+  priority       TaskPriority
+  resolvedAt     DateTime?
+  resolvedById   String?
+  resolvedBy     User?            @relation("ReserveResolver", fields: [resolvedById], references: [id])
+  createdAt      DateTime         @default(now())
+}
+
+enum ValidationStatus {
+  PENDING
+  APPROVED
+  APPROVED_WITH_RESERVES
+  REJECTED
+}
+
+model Report {
+  id            String       @id @default(cuid())
+  projectId     String
+  project       Project      @relation(fields: [projectId], references: [id])
+  type          ReportType
+  title         String
+  period        String       // "Semaine 18/2026", "Mai 2026", etc.
+  fileUrl       String?
+  documentId    String?
+  document      Document?    @relation(fields: [documentId], references: [id])
+  status        ReportStatus @default(DRAFT)
+  generatedAt   DateTime?
+  sentAt        DateTime?
+  sentTo        String[]     // Emails des destinataires
+  createdById   String
+  createdBy     User         @relation("ReportCreator", fields: [createdById], references: [id])
+  createdAt     DateTime     @default(now())
+  
+  @@index([projectId, type])
+}
+
+enum ReportType {
+  WEEKLY_FLASH
+  MONTHLY
+  MILESTONE
+  CUSTOM
+}
+
+enum ReportStatus {
+  DRAFT
+  GENERATED
+  SENT
+  ARCHIVED
+}

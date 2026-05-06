@@ -1,0 +1,22 @@
+{
+  "name": "AGEM TrackPro",
+  "short_name": "TrackPro",
+  "description": "Plateforme premium de suivi de chantier pour Orange Burkina Faso.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#0A0A0A",
+  "theme_color": "#D4AF37",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/agem-logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/agem-logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
