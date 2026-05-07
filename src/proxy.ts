@@ -23,6 +23,6 @@ export const proxy = auth((req) => {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|agem-logo.png|orange-logo.png).*)",
+    "/((?!_next/static|_next/image|favicon.ico|agem-logo.png|orange-logo.png|sw\\.js|manifest\\.json|icon\\.png).*)",
   ],
 };
