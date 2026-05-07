@@ -1,23 +1,41 @@
-const CACHE_NAME = 'agem-trackpro-v1';
+const CACHE_NAME = 'agem-trackpro-v2';
+
+// Ne mettre en cache que les ressources statiques (images, fonts)
+const STATIC_ASSETS = ['/agem-logo.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll([
-        '/',
-        '/dashboard',
-        '/login',
-        '/agem-logo.png',
-      ]);
-    })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
   );
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  // Supprimer les anciens caches
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+    )
+  );
+  self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
-  event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
-    })
-  );
+  const url = new URL(event.request.url);
+
+  // Ne jamais intercepter les pages HTML ni les APIs — laisser le réseau gérer
+  if (
+    event.request.mode === 'navigate' ||
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/_next/')
+  ) {
+    return;
+  }
+
+  // Pour les ressources statiques uniquement : cache then network
+  if (event.request.method === 'GET') {
+    event.respondWith(
+      caches.match(event.request).then((cached) => cached || fetch(event.request))
+    );
+  }
 });
